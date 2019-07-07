@@ -4,10 +4,11 @@
 #include <cassert> // assert
 #include <numeric> // accumulate
 #include <string> // string
+#include <utility> // move
 #include <vector> // vector
 
-#include <nlohmann/detail/macro_scope.hpp>
 #include <nlohmann/detail/exceptions.hpp>
+#include <nlohmann/detail/macro_scope.hpp>
 #include <nlohmann/detail/value_t.hpp>
 
 namespace nlohmann
@@ -55,8 +56,7 @@ class json_pointer
 
     @return a string representation of the JSON pointer
 
-    @liveexample{The example shows the result of `to_string`.,
-    json_pointer__to_string}
+    @liveexample{The example shows the result of `to_string`.,json_pointer__to_string}
 
     @since version 2.0.0
     */
@@ -78,21 +78,66 @@ class json_pointer
 
     /*!
     @brief append another JSON pointer at the end of this JSON pointer
+
+    @param[in] ptr  JSON pointer to append
+    @return JSON pointer with @a ptr appended
+
+    @liveexample{The example shows the usage of `operator/=`.,json_pointer__operator_add}
+
+    @complexity Linear in the length of @a ptr.
+
+    @sa @ref operator/=(std::string) to append a reference token
+    @sa @ref operator/=(std::size_t) to append an array index
+    @sa @ref operator/(const json_pointer&, const json_pointer&) for a binary operator
+
+    @since version 3.6.0
     */
     json_pointer& operator/=(const json_pointer& ptr)
     {
-        reference_tokens.insert(reference_tokens.end(), ptr.reference_tokens.begin(), ptr.reference_tokens.end());
+        reference_tokens.insert(reference_tokens.end(),
+                                ptr.reference_tokens.begin(),
+                                ptr.reference_tokens.end());
         return *this;
     }
 
-    /// @copydoc push_back(std::string&&)
+    /*!
+    @brief append an unescaped reference token at the end of this JSON pointer
+
+    @param[in] token  reference token to append
+    @return JSON pointer with @a token appended without escaping @a token
+
+    @liveexample{The example shows the usage of `operator/=`.,json_pointer__operator_add}
+
+    @complexity Amortized constant.
+
+    @sa @ref operator/=(const json_pointer&) to append a JSON pointer
+    @sa @ref operator/=(std::size_t) to append an array index
+    @sa @ref operator/(const json_pointer&, std::size_t) for a binary operator
+
+    @since version 3.6.0
+    */
     json_pointer& operator/=(std::string token)
     {
         push_back(std::move(token));
         return *this;
     }
 
-    /// @copydoc operator/=(std::string)
+    /*!
+    @brief append an array index at the end of this JSON pointer
+
+    @param[in] array_index  array index ot append
+    @return JSON pointer with @a array_index appended
+
+    @liveexample{The example shows the usage of `operator/=`.,json_pointer__operator_add}
+
+    @complexity Amortized constant.
+
+    @sa @ref operator/=(const json_pointer&) to append a JSON pointer
+    @sa @ref operator/=(std::string) to append a reference token
+    @sa @ref operator/(const json_pointer&, std::string) for a binary operator
+
+    @since version 3.6.0
+    */
     json_pointer& operator/=(std::size_t array_index)
     {
         return *this /= std::to_string(array_index);
@@ -100,14 +145,39 @@ class json_pointer
 
     /*!
     @brief create a new JSON pointer by appending the right JSON pointer at the end of the left JSON pointer
+
+    @param[in] lhs  JSON pointer
+    @param[in] rhs  JSON pointer
+    @return a new JSON pointer with @a rhs appended to @a lhs
+
+    @liveexample{The example shows the usage of `operator/`.,json_pointer__operator_add_binary}
+
+    @complexity Linear in the length of @a lhs and @a rhs.
+
+    @sa @ref operator/=(const json_pointer&) to append a JSON pointer
+
+    @since version 3.6.0
     */
-    friend json_pointer operator/(const json_pointer& left_ptr, const json_pointer& right_ptr)
+    friend json_pointer operator/(const json_pointer& lhs,
+                                  const json_pointer& rhs)
     {
-        return json_pointer(left_ptr) /= right_ptr;
+        return json_pointer(lhs) /= rhs;
     }
 
     /*!
     @brief create a new JSON pointer by appending the unescaped token at the end of the JSON pointer
+
+    @param[in] ptr  JSON pointer
+    @param[in] token  reference token
+    @return a new JSON pointer with unescaped @a token appended to @a ptr
+
+    @liveexample{The example shows the usage of `operator/`.,json_pointer__operator_add_binary}
+
+    @complexity Linear in the length of @a ptr.
+
+    @sa @ref operator/=(std::string) to append a reference token
+
+    @since version 3.6.0
     */
     friend json_pointer operator/(const json_pointer& ptr, std::string token)
     {
@@ -116,14 +186,36 @@ class json_pointer
 
     /*!
     @brief create a new JSON pointer by appending the array-index-token at the end of the JSON pointer
+
+    @param[in] ptr  JSON pointer
+    @param[in] array_index  array index
+    @return a new JSON pointer with @a array_index appended to @a ptr
+
+    @liveexample{The example shows the usage of `operator/`.,json_pointer__operator_add_binary}
+
+    @complexity Linear in the length of @a ptr.
+
+    @sa @ref operator/=(std::size_t) to append an array index
+
+    @since version 3.6.0
     */
-    friend json_pointer operator/(const json_pointer& lhs, std::size_t array_index)
+    friend json_pointer operator/(const json_pointer& ptr, std::size_t array_index)
     {
-        return json_pointer(lhs) /= array_index;
+        return json_pointer(ptr) /= array_index;
     }
 
     /*!
-    @brief create a new JSON pointer that is the parent of this JSON pointer
+    @brief returns the parent of this JSON pointer
+
+    @return parent of this JSON pointer; in case this JSON pointer is the root,
+            the root itself is returned
+
+    @complexity Linear in the length of the JSON pointer.
+
+    @liveexample{The example shows the result of `parent_pointer` for different
+    JSON Pointers.,json_pointer__parent_pointer}
+
+    @since version 3.6.0
     */
     json_pointer parent_pointer() const
     {
@@ -137,6 +229,96 @@ class json_pointer
         return res;
     }
 
+    /*!
+    @brief remove last reference token
+
+    @pre not `empty()`
+
+    @liveexample{The example shows the usage of `pop_back`.,json_pointer__pop_back}
+
+    @complexity Constant.
+
+    @throw out_of_range.405 if JSON pointer has no parent
+
+    @since version 3.6.0
+    */
+    void pop_back()
+    {
+        if (JSON_UNLIKELY(empty()))
+        {
+            JSON_THROW(detail::out_of_range::create(405, "JSON pointer has no parent"));
+        }
+
+        reference_tokens.pop_back();
+    }
+
+    /*!
+    @brief return last reference token
+
+    @pre not `empty()`
+    @return last reference token
+
+    @liveexample{The example shows the usage of `back`.,json_pointer__back}
+
+    @complexity Constant.
+
+    @throw out_of_range.405 if JSON pointer has no parent
+
+    @since version 3.6.0
+    */
+    const std::string& back()
+    {
+        if (JSON_UNLIKELY(empty()))
+        {
+            JSON_THROW(detail::out_of_range::create(405, "JSON pointer has no parent"));
+        }
+
+        return reference_tokens.back();
+    }
+
+    /*!
+    @brief append an unescaped token at the end of the reference pointer
+
+    @param[in] token  token to add
+
+    @complexity Amortized constant.
+
+    @liveexample{The example shows the result of `push_back` for different
+    JSON Pointers.,json_pointer__push_back}
+
+    @since version 3.6.0
+    */
+    void push_back(const std::string& token)
+    {
+        reference_tokens.push_back(token);
+    }
+
+    /// @copydoc push_back(const std::string&)
+    void push_back(std::string&& token)
+    {
+        reference_tokens.push_back(std::move(token));
+    }
+
+    /*!
+    @brief return whether pointer points to the root document
+
+    @return true iff the JSON pointer points to the root document
+
+    @complexity Constant.
+
+    @exceptionsafety No-throw guarantee: this function never throws exceptions.
+
+    @liveexample{The example shows the result of `empty` for different JSON
+    Pointers.,json_pointer__empty}
+
+    @since version 3.6.0
+    */
+    bool empty() const noexcept
+    {
+        return reference_tokens.empty();
+    }
+
+  private:
     /*!
     @param[in] s  reference token to be converted into an array index
 
@@ -158,43 +340,6 @@ class json_pointer
         return res;
     }
 
-    /*!
-    @brief remove and return last reference token
-    @throw out_of_range.405 if JSON pointer has no parent
-    */
-    std::string pop_back()
-    {
-        if (JSON_UNLIKELY(empty()))
-        {
-            JSON_THROW(detail::out_of_range::create(405, "JSON pointer has no parent"));
-        }
-
-        auto last = reference_tokens.back();
-        reference_tokens.pop_back();
-        return last;
-    }
-
-    /*!
-    @brief append an unescaped token at the end of the reference pointer
-    */
-    void push_back(const std::string& token)
-    {
-        reference_tokens.push_back(token);
-    }
-
-    /// @copydoc push_back(const std::string&)
-    void push_back(std::string&& token)
-    {
-        reference_tokens.push_back(std::move(token));
-    }
-
-    /// return whether pointer points to the root document
-    bool empty() const noexcept
-    {
-        return reference_tokens.empty();
-    }
-
-  private:
     json_pointer top() const
     {
         if (JSON_UNLIKELY(empty()))
@@ -308,7 +453,7 @@ class json_pointer
                     std::all_of(reference_token.begin(), reference_token.end(),
                                 [](const char x)
                 {
-                    return (x >= '0' and x <= '9');
+                    return x >= '0' and x <= '9';
                 });
 
                 // change value to array for numbers or "-" or to object otherwise
@@ -754,12 +899,34 @@ class json_pointer
         return result;
     }
 
+    /*!
+    @brief compares two JSON pointers for equality
+
+    @param[in] lhs  JSON pointer to compare
+    @param[in] rhs  JSON pointer to compare
+    @return whether @a lhs is equal to @a rhs
+
+    @complexity Linear in the length of the JSON pointer
+
+    @exceptionsafety No-throw guarantee: this function never throws exceptions.
+    */
     friend bool operator==(json_pointer const& lhs,
                            json_pointer const& rhs) noexcept
     {
-        return (lhs.reference_tokens == rhs.reference_tokens);
+        return lhs.reference_tokens == rhs.reference_tokens;
     }
 
+    /*!
+    @brief compares two JSON pointers for inequality
+
+    @param[in] lhs  JSON pointer to compare
+    @param[in] rhs  JSON pointer to compare
+    @return whether @a lhs is not equal @a rhs
+
+    @complexity Linear in the length of the JSON pointer
+
+    @exceptionsafety No-throw guarantee: this function never throws exceptions.
+    */
     friend bool operator!=(json_pointer const& lhs,
                            json_pointer const& rhs) noexcept
     {
